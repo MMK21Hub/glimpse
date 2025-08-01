@@ -8,6 +8,7 @@ use color_eyre::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     DefaultTerminal, Frame,
+    layout::{Constraint, Direction, Layout},
     style::Stylize,
     text::Line,
     widgets::{Block, Paragraph},
@@ -17,9 +18,19 @@ use thiserror::Error;
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();
-    let result = App::new().run(terminal);
+    let app = App::new();
+    let result = app.run(terminal);
     ratatui::restore();
-    result
+    match result {
+        Ok(logs) => {
+            println!("Printing Glimpse log output...");
+            for log_line in logs {
+                println!("{}", log_line);
+            }
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
 }
 
 const SYS_CLASS_LEDS: &str = "/sys/class/leds";
@@ -115,13 +126,14 @@ impl App {
     }
 
     /// Run the application's main loop.
-    pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+    pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<Vec<String>> {
         self.running = true;
         while self.running {
             terminal.draw(|frame| self.render(frame))?;
             self.handle_crossterm_events()?;
         }
-        Ok(())
+        self.log.push("Exiting Glimpse".to_string());
+        Ok(self.log)
     }
 
     /// Renders the user interface.
@@ -131,13 +143,17 @@ impl App {
     /// - <https://docs.rs/ratatui/latest/ratatui/widgets/index.html>
     /// - <https://github.com/ratatui/ratatui/tree/main/ratatui-widgets/examples>
     fn render(&mut self, frame: &mut Frame) {
+        let layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(vec![Constraint::Percentage(20), Constraint::Min(20)])
+            .split(frame.area());
         let title = Line::from("Glimpse").bold().blue().centered();
         let text = self.log.join("\n");
         frame.render_widget(
             Paragraph::new(text)
                 .block(Block::bordered().title(title))
                 .left_aligned(),
-            frame.area(),
+            layout[1],
         );
     }
 
