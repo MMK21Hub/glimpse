@@ -9,9 +9,9 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout},
-    style::Stylize,
+    style::{Color, Style, Stylize},
     text::Line,
-    widgets::{Block, Paragraph},
+    widgets::{Block, List, ListDirection, ListState, Paragraph},
 };
 use thiserror::Error;
 
@@ -95,13 +95,23 @@ fn get_all_leds() -> Result<Vec<LED>, NewLEDError> {
     Ok(leds)
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+enum Pane {
+    #[default]
+    Sidebar,
+    Mainbar,
+}
+
 /// The main application which holds the state and logic of the application.
 #[derive(Debug, Default)]
 pub struct App {
     /// Is the application running?
     running: bool,
     leds: Vec<LED>,
+    // selected_led: Option<LED>,
     log: Vec<String>,
+    focused_pane: Pane,
+    led_list_state: ListState,
 }
 
 impl App {
@@ -120,8 +130,10 @@ impl App {
         };
         Self {
             running: false,
+            focused_pane: Pane::default(),
             leds,
             log,
+            led_list_state: ListState::default(),
         }
     }
 
@@ -147,7 +159,15 @@ impl App {
             .direction(Direction::Horizontal)
             .constraints(vec![Constraint::Percentage(20), Constraint::Min(20)])
             .split(frame.area());
-        let title = Line::from("Glimpse").bold().blue().centered();
+        // Left panel
+        let left_panel_title = Line::from("LEDs").bold().blue().centered();
+        let led_list = List::new(self.leds.iter().map(|led| led.name.to_string()))
+            .block(Block::bordered().title(left_panel_title))
+            .style(Style::new().white())
+            .highlight_style(Style::new().bg(Color::Blue));
+        frame.render_stateful_widget(led_list, layout[0], &mut self.led_list_state);
+        // Right panel
+        let title = Line::from("LED detail").bold().blue().centered();
         let text = self.log.join("\n");
         frame.render_widget(
             Paragraph::new(text)
@@ -177,7 +197,12 @@ impl App {
         match (key.modifiers, key.code) {
             (_, KeyCode::Esc | KeyCode::Char('q'))
             | (KeyModifiers::CONTROL, KeyCode::Char('c') | KeyCode::Char('C')) => self.quit(),
-            // Add other key handlers here.
+            (_, KeyCode::Up) if self.focused_pane == Pane::Sidebar => {
+                self.led_list_state.select_previous();
+            }
+            (_, KeyCode::Down) if self.focused_pane == Pane::Sidebar => {
+                self.led_list_state.select_next();
+            }
             _ => {}
         }
     }
